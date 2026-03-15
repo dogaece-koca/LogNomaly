@@ -1,8 +1,8 @@
 """
-LogNomaly - Flask REST API (Multi-Dataset & Smart Routing)
+LogNomaly - Flask REST API (Multi-Dataset & Smart Routing - In-Memory)
 """
 
-import os, sys, re, uuid, logging, shutil, json
+import os, sys, re, uuid, logging, shutil
 import numpy as np
 import pandas as pd
 import joblib
@@ -29,7 +29,6 @@ logger = logging.getLogger("api")
 
 MODEL_DIR  = os.path.join(BASE_DIR, "saved_models")
 UPLOAD_DIR = os.path.join(BASE_DIR, "temp_uploads")
-HISTORY_FILE = os.path.join(BASE_DIR, "analysis_history.json") # Kalıcı Geçmiş Dosyası
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = Flask(__name__)
@@ -108,7 +107,7 @@ except Exception as e:
 rule_engine = RuleEngine()
 
 # ======================================================================
-#  Yardımcı Fonksiyonlar (Akıllı Yönlendirme ve Geçmiş Kaydı)
+#  Yardımcı Fonksiyon (Akıllı Yönlendirme)
 # ======================================================================
 def detect_log_type(log_line: str) -> str:
     """Logun formatına veya kelimelerine bakarak HDFS mi BGL mi olduğunu anlar."""
@@ -117,21 +116,6 @@ def detect_log_type(log_line: str) -> str:
     if "dfs.DataNode" in log_line or "Receiving block" in log_line or "blk_" in log_line:
         return "HDFS"
     return "BGL"
-
-def save_to_history(result: dict):
-    """Tekli analiz sonuçlarını veritabanı olmadan JSON dosyasına arşivler."""
-    history = []
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                history = json.load(f)
-        except Exception:
-            pass
-    
-    # En yeni analiz en üstte dursun, toplam 50 kayıt tutalım
-    history.insert(0, result)
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history[:50], f, ensure_ascii=False, indent=4)
 
 # ======================================================================
 #  Pipeline
@@ -240,19 +224,10 @@ def analyze_single():
         return jsonify({"error": "'log' alani bos olamaz."}), 400
     try:
         result = run_pipeline(level, log_line)
-        save_to_history(result) # Geçmişe Kaydet!
         return jsonify(result), 200
     except Exception as e:
         logger.exception("Hata")
         return jsonify({"error": str(e)}), 500
-
-@app.get("/api/history")
-def get_history():
-    """Kaydedilen geçmiş analizleri döndürür."""
-    if not os.path.exists(HISTORY_FILE):
-        return jsonify([]), 200
-    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-        return jsonify(json.load(f)), 200
 
 @app.post("/api/upload")
 def upload_file():
@@ -290,14 +265,16 @@ def analyze_file_ep():
                 if m_bgl:
                     records.append({"level": m_bgl.group(1).upper(), "message": m_bgl.group(2)})
                 elif m_hdfs:
-                    records.append({"level": m_hdfs.group(1).upper(), "message": line}) # HDFS için tam satırı gönder
+                    records.append({"level": m_hdfs.group(1).upper(), "message": line}) 
                 else:
                     records.append({"level": "INFO", "message": line})
                     
         results = [run_pipeline(r["level"], r["message"]) for r in records]
+        
         if session_id:
             _sessions[session_id] = results
             shutil.rmtree(os.path.dirname(file_path), ignore_errors=True)
+            
         return jsonify({"stats": _stats(results), "results": results}), 200
     except Exception as e:
         logger.exception("Dosya analiz hatasi")
