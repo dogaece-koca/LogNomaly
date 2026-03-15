@@ -1,5 +1,5 @@
 """
-LogNomaly - Flask REST API (Düzeltilmiş Versiyon)
+LogNomaly - Flask REST API (Multi-Dataset & Smart Routing - In-Memory)
 """
 
 import os, sys, re, uuid, logging, shutil
@@ -9,14 +9,12 @@ import joblib
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-from werkzeug.exceptions import RequestEntityTooLarge
 from scipy.sparse import hstack, csr_matrix
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-    
 from models.rule_engine import RuleEngine
 
 try:
@@ -37,25 +35,39 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 CORS(app)
 
+def clean_log(msg: str) -> str:
+        """Mesajdaki gereksiz ID, IP ve sayıları maskeleyerek modelin asıl kelimelere odaklanmasını sağlar."""
+        import re
+        msg = re.sub(r'blk_-?\d+', '<BLK>', msg) # Blok ID'leri gizle
+        msg = re.sub(r'/?\d+\.\d+\.\d+\.\d+:\d+', '<IP>', msg) # IP adreslerini gizle
+        msg = re.sub(r'\b\d+\b', '<NUM>', msg) # Tekil sayıları gizle
+        return msg
+
 # ======================================================================
-#  Model Bundle
+#  Model Bundle (Multi-Dataset Uyumlu Sınıf)
 # ======================================================================
 class ModelBundle:
-    def __init__(self):
+    def __init__(self, dataset_type="BGL"):
+        self.dataset_type = dataset_type
+        self.prefix = "hdfs_" if dataset_type == "HDFS" else ""
         self.iso = self.rf = self.tfidf = self.le = None
         self.feature_names = []
         self.loaded = False
         self.explainer = None
 
     def load(self):
-        for name in ["iso_forest.joblib", "rf_classifier.joblib", "feature_extractor.joblib"]:
+        iso_name = f"{self.prefix}iso_forest.joblib"
+        rf_name  = f"{self.prefix}rf_classifier.joblib"
+        ext_name = f"{self.prefix}feature_extractor.joblib"
+
+        for name in [iso_name, rf_name, ext_name]:
             p = os.path.join(MODEL_DIR, name)
             if not os.path.exists(p):
                 raise FileNotFoundError(f"Bulunamadi: {p}")
 
-        self.iso = joblib.load(os.path.join(MODEL_DIR, "iso_forest.joblib"))
-        self.rf  = joblib.load(os.path.join(MODEL_DIR, "rf_classifier.joblib"))
-        ext      = joblib.load(os.path.join(MODEL_DIR, "feature_extractor.joblib"))
+        self.iso = joblib.load(os.path.join(MODEL_DIR, iso_name))
+        self.rf  = joblib.load(os.path.join(MODEL_DIR, rf_name))
+        ext      = joblib.load(os.path.join(MODEL_DIR, ext_name))
 
         if isinstance(ext, dict):
             self.tfidf = ext["tfidf"]
@@ -66,48 +78,75 @@ class ModelBundle:
             self.le    = ext.level_encoder
             self.feature_names = getattr(ext, "feature_names", [])
 
-        # XAI Explainer Başlatma
         if XAIExplainer and self.rf is not None:
             try:
-                # RandomForestClassifier nesnesini doğrudan gönderiyoruz
                 self.explainer = XAIExplainer(self.rf, self.feature_names)
-                logger.info("XAI Explainer başarıyla başlatıldı.")
             except Exception as e:
-                logger.error(f"XAI Explainer başlatma hatası: {e}")
+                logger.error(f"[{self.dataset_type}] XAI Explainer hatası: {e}")
 
         self.loaded = True
-        logger.info("Modeller yuklendi. Feature: %d", self.iso.n_features_in_)
+        logger.info("✅ %s Modelleri Yüklendi. Feature: %d", self.dataset_type, self.iso.n_features_in_)
 
     def vectorize(self, level: str, message: str) -> np.ndarray:
-    # Eski: safe = level if level in self.le.classes_ else "INFO"
-        safe = level if level in self.le.classes_ else "UNKNOWN" # DÜZELTİLDİ
+        safe = level if level in self.le.classes_ else "UNKNOWN"
         lenc = self.le.transform([safe]).reshape(1, 1)
         td   = np.zeros((1, 1))
-        tv   = self.tfidf.transform([message])
+        cleaned_msg = clean_log(message)
+        tv   = self.tfidf.transform([cleaned_msg])
         return hstack([csr_matrix(np.hstack([lenc, td])), tv]).toarray()
 
-bundle = ModelBundle()
-try:
-    bundle.load()
-except Exception as e:
-    logger.error(f"Model yükleme hatası: {e}")
 
-# Kural motorunu başlat
+# Global Model Sözlüğü
+bundles = {
+    "BGL": ModelBundle("BGL"),
+    "HDFS": ModelBundle("HDFS")
+}
+
+# Modelleri Başlat
+try:
+    bundles["BGL"].load()
+except Exception as e:
+    logger.error(f"BGL Yükleme Hatası: {e}")
+
+try:
+    bundles["HDFS"].load()
+except Exception as e:
+    logger.warning(f"HDFS Modeli Henüz Yok (Eğitim bitmediyse normaldir): {e}")
+
 rule_engine = RuleEngine()
+
+# ======================================================================
+#  Yardımcı Fonksiyon (Akıllı Yönlendirme)
+# ======================================================================
+def detect_log_type(log_line: str) -> str:
+    """Logun formatına veya kelimelerine bakarak HDFS mi BGL mi olduğunu anlar."""
+    if re.match(r"^\d{6}\s+\d{6}\s+", log_line):
+        return "HDFS"
+    if "dfs.DataNode" in log_line or "Receiving block" in log_line or "blk_" in log_line:
+        return "HDFS"
+    return "BGL"
 
 # ======================================================================
 #  Pipeline
 # ======================================================================
 def run_pipeline(level: str, message: str) -> dict:
-    # Eski check_rules yerine yeni nesneyi kullanıyoruz
+    # 1. Akıllı Yönlendirme (Smart Routing)
+    dataset_type = detect_log_type(message)
+    bundle = bundles[dataset_type]
+    
+    # Eğer HDFS seçildi ama model yoksa BGL'ye düş (Fallback)
+    if not bundle.loaded:
+        bundle = bundles["BGL"]
+        dataset_type = "BGL (Fallback)"
+
+    # 2. Kural Motoru
     rule_result = rule_engine.check(message)
     threat_type = rule_result["threat_type"]
-    rule_score = rule_result["score"]
+    rule_score  = rule_result["score"]
 
-    # Katman 1: Kural Eşleşmesi (Kritik Skor)
     if rule_score and rule_score >= 0.8:
         return {
-            "level": level, "message": message,
+            "level": level, "message": message, "dataset_routed": dataset_type,
             "is_known_threat": True, "threat_type": threat_type,
             "matched_rule": threat_type, "if_prediction": -1,
             "if_anomaly_score": 1.0, "predicted_class": threat_type,
@@ -115,34 +154,48 @@ def run_pipeline(level: str, message: str) -> dict:
             "risk_level": _to_level(rule_score), "shap_explanation": {},
         }
 
-    # Katman 2 & 3: ML Analizi
+    # 3. ML Analizi (Seçilen Uzman Model ile)
     x = bundle.vectorize(level, message)
     iso_score    = float(bundle.iso.decision_function(x)[0])
     anomaly_prob = float(np.clip(1.0 - (np.clip(iso_score, -0.5, 0.5) + 0.5), 0, 1))
     iso_pred     = int(bundle.iso.predict(x)[0])
 
-    if iso_pred == 1:
-        risk, predicted_class, rf_conf = anomaly_prob * 0.2, "Normal", 0.0
+
+
+    probs           = bundle.rf.predict_proba(x)[0]
+    predicted_class = bundle.rf.classes_[int(np.argmax(probs))]
+    rf_conf         = float(np.max(probs))
+    if predicted_class == "Normal":
+        # Eğer Normal diyorsa, risk sadece ufak bir anomali şüphesinden ibarettir
+        risk = anomaly_prob * 0.3 
     else:
-        probs           = bundle.rf.predict_proba(x)[0]
-        predicted_class = bundle.rf.classes_[int(np.argmax(probs))]
-        rf_conf         = float(np.max(probs))
-        risk            = 0.4 * anomaly_prob + 0.6 * rf_conf
+        # Eğer SystemFailure veya BruteForce diyorsa, güven skorunu riske ekle!
+        risk = 0.4 * anomaly_prob + 0.6 * rf_conf
+
+    # +++ YENİ: HYBRID SIEM OVERRIDE (Gerçek Dünya Güvenlik Ağı) +++
+    # Eğer yapay zeka (RF) logu eğitimde görmediği için kaçırdıysa, 
+    # Log Seviyesine (Level) bakarak riski biz manuel olarak fırlatıyoruz!
+    msg_lower = message.lower()
+    if level in ["ERROR", "CRITICAL", "FATAL"] or "outofmemory" in msg_lower or "corrupted" in msg_lower:
+        risk = max(risk, 0.85) # Skoru en az 0.85 yap (KIRMIZI)
+        predicted_class = "SystemFailure"
+    elif level in ["WARN", "WARNING"] or "missing" in msg_lower:
+        risk = max(risk, 0.65) # Skoru en az 0.65 yap (TURUNCU)
+        if predicted_class == "Normal": 
+            predicted_class = "SystemFailure"
 
     if threat_type and rule_score is None:
         risk = min(1.0, risk + 0.15)
 
-    # SHAP Analizi (Eğer risk yüksekse ve explainer hazırsa)
     shap_data = {}
     if risk >= 0.50 and bundle.explainer:
         try:
-            # x[0] vektörünü explainer'a gönderiyoruz
             shap_data = bundle.explainer.explain_prediction(x[0])
         except Exception as e:
             logger.warning(f"SHAP hatasi: {e}")
 
     return {
-        "level": level, "message": message,
+        "level": level, "message": message, "dataset_routed": dataset_type,
         "is_known_threat": False,
         "threat_type": predicted_class if predicted_class != "Normal" else None,
         "matched_rule": threat_type, "if_prediction": iso_pred,
@@ -152,6 +205,7 @@ def run_pipeline(level: str, message: str) -> dict:
         "final_risk_score": round(float(risk), 4),
         "risk_level": _to_level(risk),
         "shap_explanation": shap_data,
+        "dataset_routed": dataset_type,
     }
 
 def _to_level(s):
@@ -162,16 +216,22 @@ def _stats(results):
     total = len(results)
     dist  = {"Low": 0, "Medium": 0, "High": 0}
     types = {}
+    
+    # +++ YENİ: İlk logun nereye yönlendirildiğine bakıp tüm setin adını koyuyoruz +++
+    dataset_type = results[0].get("dataset_routed", "Unknown") if total > 0 else "Unknown"
+    
     for r in results:
         dist[r["risk_level"]] = dist.get(r["risk_level"], 0) + 1
         if r["threat_type"]:
             types[r["threat_type"]] = types.get(r["threat_type"], 0) + 1
+            
     return {
         "total_logs": total,
         "total_anomalies": sum(1 for r in results if r["final_risk_score"] >= 0.5),
         "avg_risk_score": round(sum(r["final_risk_score"] for r in results) / total, 4),
         "risk_distribution": dist,
         "threat_types": types,
+        "dataset_routed": dataset_type # Dashboard'a gidecek olan sihirli veri!
     }
 
 _sessions = {}
@@ -183,27 +243,23 @@ _sessions = {}
 def health():
     return jsonify({
         "status": "ok",
-        "models_loaded": bundle.loaded,
-        "xai_ready": bundle.explainer is not None,
-        "n_features": bundle.iso.n_features_in_ if bundle.loaded else 0
+        "bgl_loaded": bundles["BGL"].loaded,
+        "hdfs_loaded": bundles["HDFS"].loaded,
     })
 
 @app.post("/api/analyze/single")
 def analyze_single():
-    if not bundle.loaded:
-        return jsonify({"error": "Modeller yuklenmedi."}), 503
     body     = request.get_json(silent=True) or {}
     log_line = body.get("log", "").strip()
     level    = body.get("level", "INFO").strip().upper()
     if not log_line:
         return jsonify({"error": "'log' alani bos olamaz."}), 400
     try:
-        return jsonify(run_pipeline(level, log_line)), 200
+        result = run_pipeline(level, log_line)
+        return jsonify(result), 200
     except Exception as e:
         logger.exception("Hata")
         return jsonify({"error": str(e)}), 500
-
-# ... (Diğer upload ve analyze_file endpointleri aynı kalabilir) ...
 
 @app.post("/api/upload")
 def upload_file():
@@ -222,15 +278,12 @@ def upload_file():
 
 @app.post("/api/analyze")
 def analyze_file_ep():
-    if not bundle.loaded:
-        return jsonify({"error": "Modeller yuklenmedi."}), 503
     body      = request.get_json(silent=True) or {}
     file_path = body.get("file_path", "")
     session_id = body.get("session_id", "")
     if not file_path or not os.path.exists(file_path):
         return jsonify({"error": "Dosya bulunamadi."}), 400
     try:
-        # BGL ve HDFS regex'leri
         bgl_re  = re.compile(r"^(?:-|[A-Z0-9_]+)\s+\d+\s+\d{4}\.\d{2}\.\d{2}\s+\S+\s+\S+\s+\S+\s+\S+\s+(\w+)\s+(.+)$")
         hdfs_re = re.compile(r"^\d{6}\s+\d{6}\s+\d+\s+(\w+)\s+[^\s:]+:\s+(.+)$")
         records = []
@@ -238,15 +291,22 @@ def analyze_file_ep():
             for raw in f:
                 line = raw.strip()
                 if not line: continue
-                m = bgl_re.match(line) or hdfs_re.match(line)
-                records.append({
-                    "level": m.group(1).upper() if m else "INFO",
-                    "message": m.group(2) if m else line
-                })
+                m_bgl = bgl_re.match(line)
+                m_hdfs = hdfs_re.match(line)
+                
+                if m_bgl:
+                    records.append({"level": m_bgl.group(1).upper(), "message": m_bgl.group(2)})
+                elif m_hdfs:
+                    records.append({"level": m_hdfs.group(1).upper(), "message": m_hdfs.group(2)}) 
+                else:
+                    records.append({"level": "INFO", "message": line})
+                    
         results = [run_pipeline(r["level"], r["message"]) for r in records]
+        
         if session_id:
             _sessions[session_id] = results
             shutil.rmtree(os.path.dirname(file_path), ignore_errors=True)
+            
         return jsonify({"stats": _stats(results), "results": results}), 200
     except Exception as e:
         logger.exception("Dosya analiz hatasi")
