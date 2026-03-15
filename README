@@ -1,0 +1,151 @@
+# LogNomaly
+
+AI-Powered Log Anomaly Detection with Explainable AI
+
+![Python](https://img.shields.io/badge/python-3.10-blue)
+![Machine Learning](https://img.shields.io/badge/Machine%20Learning-ScikitLearn-orange)
+![ASP.NET](https://img.shields.io/badge/Backend-ASP.NET%20Core-purple)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+LogNomaly is an explainable AI system for detecting anomalies in large-scale system logs.
+It combines machine learning models, rule-based reasoning, and a web dashboard to help analysts detect and understand abnormal system behavior.
+
+---
+
+## System Architecture
+
+![architecture](docs/architecture.png)
+
+LogNomaly follows a hybrid anomaly detection pipeline:
+
+Raw Logs → Log Parsing → Feature Extraction → Hybrid Detection → Explainable AI → Web Dashboard
+
+The machine learning pipeline is implemented in Python while the user interface is built using ASP.NET Core MVC.
+
+---
+
+## Features
+
+• Hybrid anomaly detection (Isolation Forest + Random Forest + Rule Engine)
+• Explainable AI for interpretable predictions
+• Automated log feature extraction pipeline
+• Web dashboard for interactive log analysis
+• Scalable architecture for large log datasets
+
+---
+
+## Tech Stack
+
+Machine Learning
+Python
+Scikit-learn
+
+Backend
+Flask API
+
+Web Interface
+ASP.NET Core MVC
+
+Infrastructure
+Docker
+Docker Compose
+
+---
+
+## Project Structure
+
+```
+LogNomaly
+│
+├── app/                # Python anomaly detection API
+├── models/             # ML models and rule engine
+├── utils/              # log parsing and feature extraction
+├── training/           # model training scripts
+├── tests/              # unit tests
+├── LogNomaly.Web/      # ASP.NET web interface
+└── docs/               # architecture diagrams
+```
+
+---
+
+## Dataset
+
+LogNomaly was evaluated using the **Blue Gene/L (BGL) log dataset**, a widely used benchmark for log anomaly detection.
+
+Dataset statistics
+
+• 4.7M log entries
+• 348K anomalies (~7.3%)
+• ~7 months of system activity
+
+Download dataset:
+
+https://www.kaggle.com/datasets/omduggineni/loghub-bgl-log-data
+
+Place the dataset in:
+
+```
+data/BGL.log
+```
+
+---
+
+## Installation
+
+Clone repository
+
+```
+git clone https://github.com/dogaece-koca/LogNomaly.git
+cd LogNomaly
+```
+
+Install dependencies
+
+```
+pip install -r requirements.txt
+```
+
+---
+
+## Run the AI API
+
+```
+python app/app.py
+```
+
+---
+
+## Run the Web Dashboard
+
+```
+cd LogNomaly.Web
+dotnet run
+```
+
+Open:
+
+```
+http://localhost:5000
+```
+
+---
+
+## Future Work
+
+• real-time log stream analysis
+• deep learning anomaly detection
+• SIEM integration
+• advanced XAI visualization
+
+---
+
+## Author
+
+Doğa Ece Koca
+Computer Engineering – Dokuz Eylül University
+
+---
+
+## License
+
+MIT License
