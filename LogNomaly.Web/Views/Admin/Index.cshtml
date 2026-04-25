@@ -97,9 +97,9 @@
                         <td><span class="role-badge @user.Role.ToLower()">@user.Role</span></td>
                         <td>@user.CreatedAt.ToString("yyyy-MM-dd")</td>
                         <td class="action-cells">
-                            <button class="btn-sm btn-info" onclick="openRoleModal('@user.Id', '@user.Role')">Change Role</button>
-                            <button class="btn-sm btn-warning">Reset Pwd</button>
-                            <button class="btn-sm btn-danger">Delete</button>
+                            <button class="btn-sm btn-info" onclick="openRoleModal('@user.Id', '@user.Role', '@user.Username')">Change Role</button>
+                            <button class="btn-sm btn-warning" onclick="resetPassword('@user.Id', '@user.Username')">Reset Pwd</button>
+                            <button class="btn-sm btn-danger" onclick="openDeleteModal('@user.Id', '@user.Username')">Delete</button>
                         </td>
                     </tr>
                 }
@@ -130,3 +130,86 @@
         </div>
     </form>
 </dialog>
+
+<dialog id="roleModal" class="native-modal">
+    <form method="post" action="/Admin/AssignRole">
+        @Html.AntiForgeryToken()
+        <input type="hidden" id="roleUserId" name="AnalystId" />
+        <h3>Change Analyst Role</h3>
+        <p>Changing role for: <strong id="roleUsernameDisplay"></strong></p>
+        <div class="form-group">
+            <label>New Role:</label>
+            <select id="roleSelect" name="role">
+                <option value="Junior">Junior Analyst</option>
+                <option value="Senior">Senior Analyst</option>
+                <option value="Admin">System Admin</option>
+            </select>
+        </div>
+        <div class="modal-actions" style="margin-top: 20px;">
+            <button type="button" class="btn-outline" onclick="document.getElementById('roleModal').close()">Cancel</button>
+            <button type="submit" class="btn-primary">Update Role</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="deleteModal" class="native-modal">
+    <form method="post" action="/Admin/DeleteAnalyst">
+        @Html.AntiForgeryToken()
+        <input type="hidden" id="deleteUserId" name="AnalystId" />
+        <h3 style="color: var(--danger);">⚠ Delete Analyst</h3>
+        <p>Are you sure you want to permanently delete <strong id="deleteUsernameDisplay"></strong>?</p>
+        <p style="font-size: 12px; color: var(--text-muted);">This action cannot be undone. Their past SOC logs will remain, but their login access will be revoked.</p>
+        <div class="modal-actions" style="margin-top: 20px;">
+            <button type="button" class="btn-outline" onclick="document.getElementById('deleteModal').close()">Cancel</button>
+            <button type="submit" class="btn-danger" style="background-color: var(--danger); color: white;">Yes, Delete User</button>
+        </div>
+    </form>
+</dialog>
+
+@section Scripts {
+    <script>
+        // 1. Role update modal function
+        function openRoleModal(userId, currentRole, username) {
+            document.getElementById('roleUserId').value = userId;
+            document.getElementById('roleUsernameDisplay').innerText = username;
+            document.getElementById('roleSelect').value = currentRole;
+            document.getElementById('roleModal').showModal();
+        }
+
+        // 2. Delete model function
+        function openDeleteModal(userId, username) {
+            document.getElementById('deleteUserId').value = userId;
+            document.getElementById('deleteUsernameDisplay').innerText = username;
+            document.getElementById('deleteModal').showModal();
+        }
+
+        // 3. Password reset function
+        async function resetPassword(userId, username) {
+            if (!confirm(`Are you sure you want to reset the password for ${username}? A new temporary password will be generated.`)) {
+                return;
+            }
+
+            try {
+                // Send a request to /Admin/ResetPassword
+                const response = await fetch('/Admin/ResetPassword', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    // Send the anti-forgery token
+                    body: `AnalystId=${userId}&__RequestVerificationToken=${document.querySelector('input[name="__RequestVerificationToken"]').value}`
+                });
+
+                if (response.ok) {
+                    // Reload the page to display temp password
+                    window.location.reload();
+                } else {
+                    alert('Failed to reset password. Please check the server logs.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('A network error occurred.');
+            }
+        }
+    </script>
+}

@@ -36,7 +36,7 @@ namespace LogNomaly.Web.Controllers
             return View(vm);
         }
 
-        // ── Log Upload & Analiz Sayfası ──────────────────────────────────
+        // ── Log Upload & Analyze Page ──────────────────────────────────
         public IActionResult Analyze()
         {
             return View(new AnalyzeViewModel());
@@ -62,7 +62,7 @@ namespace LogNomaly.Web.Controllers
                 return View(vm);
             }
 
-            // 2. Analiz
+            // 2. Analyze
             var analyzeResp = await _api.AnalyzeFileAsync(uploadResp.FilePath, uploadResp.SessionId);
             if (analyzeResp == null)
             {
@@ -70,7 +70,7 @@ namespace LogNomaly.Web.Controllers
                 return View(vm);
             }
 
-            // Session'a kaydet
+            // Save to session
             HttpContext.Session.SetString("SessionId", uploadResp.SessionId);
 
             vm.SessionId = uploadResp.SessionId;
@@ -80,7 +80,7 @@ namespace LogNomaly.Web.Controllers
             return View(vm);
         }
 
-        // ── Tek Satır Analiz ─────────────────────────────────────────────
+        // ── Single Line Analyze ─────────────────────────────────────────────
         public IActionResult SingleAnalyze()
         {
             return View(new SingleAnalyzeViewModel());
@@ -108,7 +108,7 @@ namespace LogNomaly.Web.Controllers
             return View(vm);
         }
 
-        // ── XAI Detay ────────────────────────────────────────────────────
+        // ── XAI Detail ────────────────────────────────────────────────────
         public async Task<IActionResult> Xai(string sessionId, int index)
         {
             var results = await _api.GetResultsAsync(sessionId, 1, 1000);
@@ -140,7 +140,7 @@ namespace LogNomaly.Web.Controllers
             return View(vm);
         }
 
-        // ── API Health Check (AJAX için) ─────────────────────────────────
+        // ── API Health Check (AJAX) ─────────────────────────────────
         [HttpGet]
         public async Task<IActionResult> ApiHealth()
         {

@@ -123,7 +123,6 @@
             <div class="card">
                 <div class="card-title">Why is this Risky? (SHAP)</div>
                 <div style="margin-top:15px;">
-                    @* +++ BURADAKİ NULL HATASI DÜZELTİLDİ +++ *@
                     @if (r.ShapExplanation != null && r.ShapExplanation.TopFeatures != null && r.ShapExplanation.TopFeatures.Any())
                     {
                         @foreach (var feat in r.ShapExplanation.TopFeatures)
@@ -208,20 +207,19 @@
         }     
 
         function startInvestigation() {
-            const notes = prompt("Vaka (Investigation) başlatılıyor. Varsa ön notlarınızı girebilirsiniz (Opsiyonel):");
+            const notes = prompt("Investigation starts. You may add your notes (Optional):");
             if (notes !== null) {
                 sendActionToBackend("Investigate", notes);
             }
-            if(confirm("Bu log için resmi bir inceleme (vaka) başlatmak istediğinize emin misiniz?")) {
+            if(confirm("Are you sure to start an official case for this log?")) {
                 sendActionToBackend("Investigate");
             }
         }
 
-        // YENİ: Backend'e istek atarken ProposedLabel'ı da yolluyoruz
         async function sendActionToBackend(actionType, notes = "", proposedLabel = null) {
             var shortId = '@(Model.SessionId)' ? '@(Model.SessionId)'.substring(0, 8) : "Unknown";
             const logId = shortId;
-            const rawLog = document.getElementById('rawLog') ? document.getElementById('rawLog').innerText.trim() : "Log bulunamadı";
+            const rawLog = document.getElementById('rawLog') ? document.getElementById('rawLog').innerText.trim() : "Log not found";
             const predictedClass = "@(Model.Result?.PredictedClass ?? "Unknown")";
             const riskLevel = "@(Model.Result?.RiskLevel ?? "Low")";
 
@@ -232,7 +230,7 @@
                 RiskLevel: riskLevel,
                 ActionType: actionType,
                 AnalystNotes: notes,
-                ProposedLabel: proposedLabel // YENİ EKLENEN VERİ
+                ProposedLabel: proposedLabel
             };
 
             try {
@@ -246,21 +244,20 @@
 
                 if (data.success) {
                     if (actionType === 'Investigate') {
-                        alert("✅ Vaka başarıyla oluşturuldu! Log, Analist paneline atandı.");
+                        alert("✅ Case created scuccessfulluy! Log, is assigned to Analyst panel.");
                     } else {
-                        alert("✅ Log düzeltmesi SOC Manager onayına gönderildi. Onaylandığında model yeniden eğitilecek!");
+                        alert("✅ Log correction is sent to SOC Manager for approval. If approved, model will be retrained!");
                         document.getElementById('correctionModal').close();
                     }
                 } else {
-                    alert("❌ İşlem başarısız: " + data.message);
+                    alert("❌ Failed: " + data.message);
                 }
             } catch (error) {
-                console.error("API Bağlantı Hatası:", error);
-                alert("Sunucuya ulaşılamadı. Lütfen konsolu kontrol edin.");
+                console.error("API Connection Error:", error);
+                alert("Failed to connect to the server. Please check the console.");
             }
         }
 
-        // YENİ MODAL FONKSİYONLARI
         function openCorrectionModal() {
             document.getElementById('correctionModal').showModal();
         }
@@ -301,7 +298,7 @@
             }
 
             if(confirm("Are you sure you want to submit this correction for model retraining?")) {
-                sendActionToBackend("Correction", notes, proposed); // ActionType artık 'Correction'
+                sendActionToBackend("Correction", notes, proposed);
             }
         }
 

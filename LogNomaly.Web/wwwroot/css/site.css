@@ -1412,3 +1412,37 @@ textarea.form-input {
         border: 1px solid #ccc;
     }
 }
+
+/* --- DIALOG CENTERING AND STYLING --- */
+dialog.native-modal {
+    margin: auto;
+    position: fixed;
+    inset: 0;
+    padding: 24px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+    background-color: var(--bg-surface, #f0f0ea);
+    color: var(--text-primary);
+    width: 90%;
+    max-width: 450px;
+    z-index: 1000;
+}
+
+    /* Shadowing the page */
+    dialog.native-modal::backdrop {
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(4px);
+    }
+
+    dialog.native-modal input,
+    dialog.native-modal select {
+        width: 100%;
+        padding: 8px 12px;
+        margin-top: 5px;
+        margin-bottom: 15px;
+        background-color: #ffffff;
+        border: 1px solid #444;
+        color: #111111;
+        border-radius: 4px;
+    }

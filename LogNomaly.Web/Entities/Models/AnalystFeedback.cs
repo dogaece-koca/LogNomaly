@@ -33,8 +33,8 @@ namespace LogNomaly.Web.Entities.Models
         [Required, MaxLength(1000)]
         public string? AnalystNotes { get; set; }
 
-        // ─── NEW: Analyst's corrected label for continuous learning ───
-        // Correction Types:
+        // ─── Analyst's corrected label for continuous learning ───
+        // Correction Type Examples:
         //   "Normal"         → False Positive (AI predicted threat, analyst says it's fine)
         //   "SQLInjection"   → False Negative (AI missed a real threat)
         //   "DDoS"           → Misclassification (AI said BruteForce, analyst says DDoS)

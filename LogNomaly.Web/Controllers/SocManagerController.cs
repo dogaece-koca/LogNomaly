@@ -38,7 +38,7 @@ namespace LogNomaly.Web.Controllers
                 .ToListAsync(),
 
                 // Fetch only pending false positives that need model retraining approval
-                PendingFalsePositives = await _context.AnalystFeedbacks
+                PendingCorrections = await _context.AnalystFeedbacks
                     .Include(f => f.Analyst)
                     .Where(f => f.Status == "Pending" &&
                               (f.ActionType == "Investigate" ||
@@ -111,10 +111,10 @@ namespace LogNomaly.Web.Controllers
             if (feedback == null)
                 return NotFound();
 
-            // Logu tekrar Python yapay zekasına gönderip detaylı analiz (SHAP vb.) alıyoruz
+            // Log is sent to AI and detailed analyze is requested
             var aiAnalysisResult = await _pythonApiService.AnalyzeSingleAsync(feedback.RawLog);
 
-            // Hem veritabanı kaydını hem de yapay zeka sonucunu View'a gönderiyoruz
+            // Both database record and AI answer are sent to View
             var viewModel = new CaseReportViewModel
             {
                 FeedbackRecord = feedback,
@@ -129,19 +129,19 @@ namespace LogNomaly.Web.Controllers
         {
             try
             {
-                // 1. Investigation Case tablosundan ilgili vakayı bul
+                // 1. Find the corresponding Investigation Case
                 var invCase = await _context.InvestigationCases
                     .FirstOrDefaultAsync(c => c.FeedbackId == request.FeedbackId);
 
                 if (invCase == null)
                     return NotFound(new { success = false, message = "Investigation case not found." });
 
-                // 2. Statüyü güncelle ve çözülme tarihini at
+                // 2. Update the status
                 invCase.Status = "Resolved";
                 invCase.ClosedAt = DateTime.UtcNow;
                 invCase.ResolutionNotes = request.Notes;
 
-                // 3. İlgili Feedback kaydının da statüsünü güncelle
+                // 3. Update related feedback status
                 var feedback = await _context.AnalystFeedbacks.FindAsync(request.FeedbackId);
                 if (feedback != null) feedback.Status = "Resolved";
 
@@ -164,7 +164,7 @@ namespace LogNomaly.Web.Controllers
                 var feedback = await _context.AnalystFeedbacks.FindAsync(request.FeedbackId);
                 if (feedback == null) return NotFound(new { success = false, message = "Case not found." });
 
-                // Mevcut notların sonuna tarih atarak yeni notu ekliyoruz
+                // Add new notes
                 string timeStamp = DateTime.UtcNow.ToString("dd MMM HH:mm");
                 feedback.AnalystNotes += $"\n\n[{timeStamp} - Update]: {request.Notes}";
 

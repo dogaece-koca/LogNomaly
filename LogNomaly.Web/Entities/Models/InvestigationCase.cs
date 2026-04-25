@@ -7,13 +7,13 @@ namespace LogNomaly.Web.Entities.Models
     {
         [Key]
         public int Id { get; set; }
-
-        // Hangi Feedback üzerinden bu vaka açıldı?
+        
+        // Which feedback opened this case
         public int FeedbackId { get; set; }
         [ForeignKey("FeedbackId")]
         public AnalystFeedback? Feedback { get; set; }
 
-        // Vakaya atanan analist
+        // Which analyst is assigned to the case
         public int AssignedAnalystId { get; set; }
         [ForeignKey("AssignedAnalystId")]
         public Analyst? AssignedAnalyst { get; set; }

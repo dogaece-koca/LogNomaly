@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// PostgreSQL Veritabanı Bağlantısı
+// PostgreSQL database conenction
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
@@ -15,9 +15,9 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
-        options.LoginPath = "/Auth/Login"; // Giriş yapmayanları buraya atar
-        options.AccessDeniedPath = "/Auth/AccessDenied"; // Yetkisi yetmeyenleri buraya atar
-        options.ExpireTimeSpan = TimeSpan.FromHours(8); // 8 saat sonra otomatik çıkış
+        options.LoginPath = "/Auth/Login"; // Logged in users
+        options.AccessDeniedPath = "/Auth/AccessDenied"; // Unauthorized users
+        options.ExpireTimeSpan = TimeSpan.FromHours(8); // Log out after 8 hours
     });
 
 builder.Services.AddControllersWithViews();
@@ -31,7 +31,8 @@ builder.Services.AddSession(options =>
     options.IdleTimeout = TimeSpan.FromMinutes(30);
     options.Cookie.HttpOnly = true;
 });
-// Feedback servisini sisteme tanıtıyoruz
+
+// Feedback service
 builder.Services.AddScoped<IFeedbackService, FeedbackService>();
 
 builder.Services.AddAuthorizationBuilder()
@@ -39,28 +40,28 @@ builder.Services.AddAuthorizationBuilder()
 
 var app = builder.Build();
 
-// Hata Yönetimi
+// Error management
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
     app.UseHsts();
 }
 
-// HTTPS ve Statik Dosyalar
+// HTTPS and Static files
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 
-// Routing (Yönlendirme)
+// Routing
 app.UseRouting();
 
 // Session
 app.UseSession();
 
-// Kimlik Doğrulama ve Yetkilendirme (Sırasıyla önce kimlik, sonra yetki)
+// First authanticate, then authorize
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Endpoint'ler
+// Endpoints
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");

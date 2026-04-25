@@ -7,7 +7,7 @@
         public string PredictedClass { get; init; } = string.Empty;
         public string RiskLevel { get; init; } = string.Empty;
 
-        // "FalsePositive" or "Investigate"
+        // "Correction" or "Investigate"
         public string ActionType { get; init; } = string.Empty;
         public string? AnalystNotes { get; init; }
         public string? ProposedLabel { get; init; }

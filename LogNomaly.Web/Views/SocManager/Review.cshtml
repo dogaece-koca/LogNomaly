@@ -4,21 +4,21 @@
     var fb = Model.FeedbackRecord;
     var ai = Model.AiInsight;
 
-    // Rozet ve tip belirleme mantığı (FP, FN, Misclassification)
+    // Type ddetermination: FP, FN, Misclassification
     string correctionType = "False Positive";
-    string badgeColor = "var(--ok)"; // Yeşil
+    string badgeColor = "var(--ok)"; // Green
 
     if (fb.ActionType == "Correction" || fb.ActionType == "FalsePositive")
     {
         if (fb.PredictedClass == "Normal" && fb.ProposedLabel != "Normal")
         {
             correctionType = "False Negative";
-            badgeColor = "var(--danger)"; // Kırmızı
+            badgeColor = "var(--danger)"; // Red
         }
         else if (fb.PredictedClass != "Normal" && fb.ProposedLabel != "Normal")
         {
             correctionType = "Misclassification";
-            badgeColor = "var(--warn)"; // Sarı/Turuncu
+            badgeColor = "var(--warn)"; // Orange
         }
     }
 }
@@ -147,11 +147,9 @@
 
 @section Scripts {
     <script>
-        // Sayfanın üstündeki butonları çalıştıracak kod
         async function processFeedback(feedbackId, actionType) {
             if (!confirm(`Are you sure you want to ${actionType.toUpperCase()} this case?`)) return;
 
-            // ÖNEMLİ: Eğer ActionType 'Approve' ise Retrain listesine düşecek.
             const endpoint = actionType === 'Approve' ? '/SocManager/ApproveFalsePositive' : '/SocManager/RejectFalsePositive';
             try {
                 const response = await fetch(endpoint, {

@@ -15,7 +15,7 @@ namespace LogNomaly.Web.Controllers
 {
 
     /// Admin-only controller. Requires "Admin" role claim.
-    /// 
+ 
     [Authorize(Roles = "Admin")]
     public class AdminController : Controller
     {
@@ -103,19 +103,19 @@ namespace LogNomaly.Web.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> CreateAnalyst(CreateAnalystDto dto)
         {
-            // 1. Formdan eksik veri geldiyse çökme, Index'e geri dön ve hata ver.
+            // If there are missing fields in the form, return to Index
             if (!ModelState.IsValid)
             {
                 TempData["Error"] = "Please fill in all required fields (Username, Password, Role).";
-                return RedirectToAction(nameof(Index)); // return View() yerine Index'e dönüyoruz!
+                return RedirectToAction(nameof(Index));
             }
 
-            // 2. Kullanıcı zaten varsa çökme, Index'e geri dön ve hata ver.
+            // If the user already exists, return to Index
             bool exists = await _context.Analysts.AnyAsync(a => a.Username == dto.Username);
             if (exists)
             {
                 TempData["Error"] = $"The username '{dto.Username}' is already taken.";
-                return RedirectToAction(nameof(Index)); // return View() yerine Index'e dönüyoruz!
+                return RedirectToAction(nameof(Index));
             }
 
             string tempPassword = Guid.NewGuid().ToString("N").Substring(0, 6) + "X8!";
@@ -138,64 +138,72 @@ namespace LogNomaly.Web.Controllers
 
         // ── POST /Admin/AssignRole ───────────────────────────────────
         [HttpPost]
-        public async Task<IActionResult> AssignRole([FromBody] AssignRoleDto dto)
+        public async Task<IActionResult> AssignRole([FromForm] AssignRoleDto dto)
         {
             var analyst = await _context.Analysts.FindAsync(dto.AnalystId);
             if (analyst == null)
-                return Json(new { success = false, message = "Analyst not found." });
+            {
+                TempData["Error"] = "Analyst not found.";
+                return RedirectToAction(nameof(Index));
+            }
 
             if (dto.Role != "Junior" && dto.Role != "Senior" && dto.Role != "Admin")
-                return Json(new { success = false, message = "Invalid role. Must be Junior, Senior, or Admin." });
+            {
+                TempData["Error"] = "Invalid role selected.";
+                return RedirectToAction(nameof(Index));
+            }
 
             analyst.Role = dto.Role;
             await _context.SaveChangesAsync();
             _logger.LogInformation("Admin changed role of {Username} to {Role}", analyst.Username, dto.Role);
 
-            return Json(new { success = true, message = $"Role updated to {dto.Role}." });
+            TempData["Success"] = $"Role for {analyst.Username} updated to {dto.Role}.";
+            return RedirectToAction(nameof(Index));
         }
 
         // ── POST /Admin/ResetPassword ────────────────────────────────
         [HttpPost]
-        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto dto)
+        public async Task<IActionResult> ResetPassword([FromForm] ResetPasswordDto dto)
         {
             string tempPassword = Guid.NewGuid().ToString("N").Substring(0, 6) + "X8!";
 
             var analyst = await _context.Analysts.FindAsync(dto.AnalystId);
             if (analyst == null)
-                return Json(new { success = false, message = "Analyst not found." });
+                return NotFound();
 
             analyst.PasswordHash = PasswordHasher.HashPassword(tempPassword);
             await _context.SaveChangesAsync();
-            _logger.LogWarning("Admin reset password for analyst: {Username}", analyst.Username);
 
-            TempData["Success"] = $"Password for analyst '{analyst.Username}' reset! TEMP PASSWORD: {tempPassword} (Copy and share this securely).";
-            return Json(new { success = true, message = "Password reset successfully." });
+            TempData["Success"] = $"Password for analyst '{analyst.Username}' reset! TEMP PASSWORD: {tempPassword}";
+            return Ok();
         }
 
         // ── POST /Admin/DeleteAnalyst ────────────────────────────────
         [HttpPost]
-        public async Task<IActionResult> DeleteAnalyst([FromBody] int analystId)
+        public async Task<IActionResult> DeleteAnalyst([FromForm] int analystId)
         {
             var analyst = await _context.Analysts
-                .Include(a => a.Feedbacks)
-                .Include(a => a.AssignedCases)
-                .FirstOrDefaultAsync(a => a.Id == analystId);
+            .Include(a => a.Feedbacks)
+            .Include(a => a.AssignedCases)
+            .FirstOrDefaultAsync(a => a.Id == analystId);
 
             if (analyst == null)
-                return Json(new { success = false, message = "Analyst not found." });
+            {
+                TempData["Error"] = "Analyst not found.";
+                return RedirectToAction(nameof(Index));
+            }
 
             if (analyst.Feedbacks.Any() || analyst.AssignedCases.Any())
-                return Json(new
-                {
-                    success = false,
-                    message = "Cannot delete analyst with existing feedback records or cases. Deactivate instead."
-                });
+            {
+                TempData["Error"] = "Cannot delete analyst with existing feedback records or cases. Deactivate instead.";
+                return RedirectToAction(nameof(Index));
+            }
 
             _context.Analysts.Remove(analyst);
             await _context.SaveChangesAsync();
-            _logger.LogWarning("Admin deleted analyst: {Username}", analyst.Username);
 
-            return Json(new { success = true, message = "Analyst deleted." });
+            TempData["Success"] = $"Analyst {analyst.Username} deleted permanently.";
+            return RedirectToAction(nameof(Index));
         }
 
         // ── POST /Admin/TriggerRetrain ────────────────────────────────────

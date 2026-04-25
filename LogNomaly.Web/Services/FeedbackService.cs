@@ -38,7 +38,7 @@ namespace LogNomaly.Web.Services
                     PredictedClass = request.PredictedClass,
                     RiskLevel = request.RiskLevel,
                     ActionType = request.ActionType,
-                    ProposedLabel = request.ProposedLabel,   // ← NEW
+                    ProposedLabel = request.ProposedLabel,
                     Status = "Pending",
                     CreatedAt = DateTime.UtcNow,
                     AnalystId = analystId,
