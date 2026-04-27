@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body>
-    <div class="mobile-topbar" style="display: none;">
+    <div class="mobile-topbar">
         <button id="hamburger-btn" aria-label="Menu" style="background: none; border: none; font-size: 24px; color: var(--text-primary); cursor: pointer;">☰</button>
         <span class="mobile-logo" style="font-weight: 600; font-size: 18px;">LogNomaly SOC</span>
     </div>
@@ -91,6 +91,8 @@
                 document.getElementById('sidebar').classList.toggle('open');
             });
         }
+    </script>
+
     </script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
